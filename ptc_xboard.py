@@ -9,14 +9,14 @@
 
 from __future__ import print_function
 
-import sys, datetime
+import sys, datetime, os
 import chess as c
 import chess.pgn
 
 abc = "abcdefgh"
 nn  = "12345678"
 
-is_uci = False
+is_uci = True
 
 if sys.argv[-1] == 'newt':
 	import newt as p
@@ -171,6 +171,7 @@ while True:
 			log.write(l + '\n')
 			log.flush()
 		if l == 'xboard':
+		        is_uci = False
 			print2('feature myname="%s" setboard=1 done=1' % nm)
 		elif l == 'quit':
 			sys.exit(0)
