@@ -9,7 +9,7 @@
 
 from __future__ import print_function
 
-import sys, datetime, os
+import sys, datetime, os, threading, time
 import chess as c
 import chess.pgn
 
@@ -96,6 +96,72 @@ def print2(x):
 
 d = ''
 r = ''
+
+search_thread = None
+stop_flag = False
+last_result = None    # holds latest (t, r) from p.getmove
+
+def _think_loop(depth_target=None):
+    """
+    Iterative deepening: increase p.MAXPLIES from 1 up to depth_target (or 64 if None).
+    After each completed iteration, save last_result so 'stop' can output bestmove.
+    """
+    global last_result, stop_flag
+    max_d = depth_target if depth_target is not None else 64
+    # Make sure there's a board
+    if not d:
+        newgame()
+    for dd in range(1, max_d + 1):
+        if stop_flag:
+            return
+        # set depth for this iteration
+        try:
+            p.MAXPLIES = dd
+        except Exception:
+            pass
+        # run one blocking iteration
+        t_res, r_res = p.getmove(d, silent=True)
+        if r_res:
+            last_result = (t_res, r_res)
+        if stop_flag:
+            return
+
+def start_search(go_line):
+    """
+    Parse 'go ...' line minimally (depth only) and spawn thread.
+    """
+    global search_thread, stop_flag, last_result
+    stop_flag = False
+    last_result = None
+    depth = None
+    toks = go_line.split()
+    if "depth" in toks:
+        try:
+            depth = int(toks[toks.index("depth") + 1])
+        except Exception:
+            depth = None
+    # (Optional) you can parse movetime/wtime/btime here and implement a time guard.
+    search_thread = threading.Thread(target=_think_loop, args=(depth,), daemon=True)
+    search_thread.start()
+
+def stop_search_and_output():
+    """
+    Set stop flag, join, and output the last stored bestmove (if any).
+    """
+    global stop_flag, search_thread, last_result
+    stop_flag = True
+    if search_thread is not None:
+        search_thread.join(timeout=0.2)  # don't hang forever; the loop cooperates between iterations
+        search_thread = None
+    if last_result and last_result[1]:
+        # Use the same 'move()' path so PGN & board stay consistent
+        move(last_result[1])
+    else:
+        # Fallback if nothing computed yet
+        if is_uci:
+            print2("bestmove 0000")
+        else:
+            print2("move 0000")
 
 def move(r):
     rm = r[0]
@@ -372,20 +438,24 @@ while True:
         elif 'setboard' in l:
             fen = l.split(' ', 1)[1]
             fromfen(fen)
-        elif l[:2] == 'go' or l == 'force':
+        elif l[:2] == 'go':
+            # Cooperative async search; 'stop' will report bestmove
             if not d:
                 newgame()
 
-            if nm == 'Newt':	# Newt has time management
+            if nm == 'Newt':
                 set_newt_time(l)
-
-            t, r = p.getmove(d, silent = True)
-            if r:
-                move(r)
+                start_search(l)
+        elif l == 'stop':
+            # UCI stop: print bestmove from latest completed iteration
+            stop_search_and_output()
+        elif l == 'force':
+            # XBoard 'force' = think off; cancel any ongoing search
+            stop_search_and_output()
         elif l == '?':
-            print2("move", r)
+            stop_search_and_output()
             if log:
-                log.write("move %s\n" % r)
+                log.write("move %s\n" % (last_result[1] if last_result else "0000"))
                 log.flush()
         else:
             if not d:
