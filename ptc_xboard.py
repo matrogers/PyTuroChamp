@@ -158,14 +158,16 @@ def stop_search_and_output():
     Set stop flag, join, and output the last stored bestmove (if any).
     """
     global stop_flag, search_thread, last_result
+    if search_thread is None and not last_result:
+        return
+
     stop_flag = True
     if search_thread is not None:
         search_thread.join(timeout=0.2)
         search_thread = None
+
     if last_result and last_result[1]:
         move(last_result[1])
-    else:
-        print2("bestmove 0000" if is_uci else "move 0000")
 
 # ========================
 # Game handling
