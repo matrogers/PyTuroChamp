@@ -82,10 +82,12 @@ else:
 
 p.Chess960 = False    # Chess960 mode off by default
 
+LOG_ENABLE = os.getenv("PTC_LOG", "0").lower() in ("1","true","yes","on")
+LOG_PATH   = os.getenv("PTC_LOG_FILE", "")  # optional override
 try:
-    log = open(lf, 'w')
+    log = open(LOG_PATH or lf, 'w') if LOG_ENABLE else None
 except:
-    log = ''
+    log = None
     print("# Could not create log file")
 
 def print2(x):
